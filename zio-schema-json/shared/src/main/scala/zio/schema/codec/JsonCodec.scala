@@ -703,18 +703,17 @@ object JsonCodec {
       case Schema.Primitive(standardType, _)              => primitiveCodec(standardType).decoder
       case Schema.Optional(codec, _)                      => option(schemaDecoder(codec))
       case Schema.Tuple2(left, right, _)                  => ZJsonDecoder.tuple2(schemaDecoder(left), schemaDecoder(right))
-      case Schema.Transform(c, f, _, a, _)                => schemaDecoder(a.foldLeft(c)((s, a) => s.annotate(a)), discriminator).mapOrFail(f)
       case Schema.Sequence(codec, f, _, _, _)             => ZJsonDecoder.chunk(schemaDecoder(codec)).map(f)
       case s @ Schema.NonEmptySequence(codec, _, _, _, _) => ZJsonDecoder.chunk(schemaDecoder(codec)).map(s.fromChunk)
       case Schema.Map(ks, vs, _)                          => mapDecoder(ks, vs)
       case Schema.NonEmptyMap(ks, vs, _)                  => mapDecoder(ks, vs).mapOrFail(m => NonEmptyMap.fromMapOption(m).toRight("NonEmptyMap expected"))
       case Schema.Set(s, _)                               => ZJsonDecoder.set(schemaDecoder(s))
+      case Schema.Transform(c, f, _, a, _)                => schemaDecoder(a.foldLeft(c)((s, a) => s.annotate(a)), discriminator).mapOrFail(f)
       case Schema.Fail(message, _)                        => failDecoder(message)
       case Schema.Either(left, right, _)                  => ZJsonDecoder.either(schemaDecoder(left), schemaDecoder(right))
       case s @ Schema.Fallback(_, _, _, _)                => fallbackDecoder(s)
       case l @ Schema.Lazy(_)                             => ZJsonDecoder.suspend(schemaDecoder(l.schema))
       case s: Schema.GenericRecord                        => recordDecoder(s, discriminator)
-      case s: Schema.Enum[A]                              => enumDecoder(s)
       //case Schema.Meta(_, _)                                                                           => astDecoder
       case s @ Schema.CaseClass0(_, _, _)                                => caseClass0Decoder(discriminator, s)
       case s @ Schema.CaseClass1(_, _, _, _)                             => caseClass1Decoder(discriminator, s)
@@ -753,6 +752,7 @@ object JsonCodec {
         caseClass21Decoder(discriminator, s)
       case s @ Schema.CaseClass22(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =>
         caseClass22Decoder(discriminator, s)
+      case s: Schema.Enum[A]                              => enumDecoder(s)
       case d @ Schema.Dynamic(_) => dynamicDecoder(d)
       case _                     => throw new Exception(s"Missing a handler for decoding of schema ${schema.toString()}.")
     }
