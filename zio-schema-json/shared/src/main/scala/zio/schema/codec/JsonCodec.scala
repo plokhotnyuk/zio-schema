@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.annotation._
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
-import scala.util.control.NonFatal
 
 import zio.json.JsonDecoder.{ JsonError, UnsafeJson }
 import zio.json.ast.Json
@@ -852,7 +851,7 @@ object JsonCodec {
               try {
                 return it.next().unsafeDecode(trace, rr).asInstanceOf[Z]
               } catch {
-                case ex if NonFatal(ex) =>
+                case _: UnsafeJson =>
                   rr.rewind()
                   rr = RecordingReader(rr)
               }
@@ -1043,16 +1042,12 @@ object JsonCodec {
         private[this] val leftDecoder  = schemaDecoder(schema.left)
         private[this] val rightDecoder = schemaDecoder(schema.right)
 
-        case class BadEnd() extends Throwable
 
         def unsafeDecode(trace: List[JsonError], in: RetractReader): Fallback[A, B] = {
           var left: Option[A]  = None
           var right: Option[B] = None
-          try {
-            // If this doesn't throw exception, it is an array, so it encodes a `Fallback.Both`
-            val lexer = Lexer
-            lexer.char(trace, in, '[')
-
+          val lexer = Lexer
+          if (in.nextNonWhitespace() == '[') {
             // get left element
             if (lexer.firstArrayElement(in)) {
               val trace_ = JsonError.ArrayAccess(0) :: trace
@@ -1082,23 +1077,21 @@ object JsonCodec {
               }
               try lexer.nextArrayElement(trace, in)
               catch {
-                case _: UnsafeJson => throw BadEnd()
+                case _: UnsafeJson => ()
               }
             }
 
-          } catch {
-            // It's not an array, so it is of type A or B
-            case BadEnd() => ()
-            case _: UnsafeJson =>
-              in.retract()
-              val rr = RecordingReader(in)
-              try {
-                left = Some(leftDecoder.unsafeDecode(trace, rr))
-              } catch {
-                case UnsafeJson(_) =>
-                  rr.rewind()
-                  right = Some(rightDecoder.unsafeDecode(trace, rr))
-              }
+          } else {
+           // It's not an array, so it is of type A or B
+            in.retract()
+            val rr = RecordingReader(in)
+            try {
+              left = Some(leftDecoder.unsafeDecode(trace, rr))
+            } catch {
+              case _: UnsafeJson =>
+                rr.rewind()
+                right = Some(rightDecoder.unsafeDecode(trace, rr))
+            }
           }
 
           (left, right) match {
