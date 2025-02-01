@@ -843,19 +843,21 @@ object JsonCodec {
         }
       } else if (parentSchema.annotations.exists(_.isInstanceOf[noDiscriminator])) {
         new ZJsonDecoder[Z] {
-          private[this] val decoders = parentSchema.cases.map(c => schemaDecoder(c.schema))
+          private[this] val decoders = parentSchema.cases.map(c => schemaDecoder(c.schema)).toArray
 
           override def unsafeDecode(trace: List[JsonError], in: RetractReader): Z = {
             var rr = RecordingReader(in)
-            val it = decoders.iterator
-            while (it.hasNext) {
+            var i = 0
+            while (i < decoders.length) {
               try {
-                return it.next().unsafeDecode(trace, rr).asInstanceOf[Z]
+                return decoders(i).unsafeDecode(trace, rr).asInstanceOf[Z]
               } catch {
-                case ex if NonFatal(ex) =>
+                case ex: UnsafeJson =>
+                  println(ex.trace)
                   rr.rewind()
                   rr = RecordingReader(rr)
               }
+              i += 1
             }
             Lexer.error("none of the subtypes could decode the data", trace)
           }
